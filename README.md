@@ -1,15 +1,20 @@
 # MovieLens Explorer
 
-Aplicação local de consulta a uma base de filmes do MovieLens, feita em **Python puro**, com
-**hash table, trie e Shell Sort implementados do zero** e uma interface web servida pela
-biblioteca padrão.
+Aplicação de consulta a uma base de filmes do MovieLens, feita em **Python puro**, com
+**hash table, trie e Shell Sort implementados do zero** e uma interface web. Roda no navegador
+(via Pyodide) ou com um servidor local.
 
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Biblioteca padrão](https://img.shields.io/badge/depend%C3%AAncias-nenhuma-success)
 ![HTML/CSS/JS](https://img.shields.io/badge/interface-HTML%20%2B%20CSS%20%2B%20JS-E34F26?logo=html5&logoColor=white)
+![Pyodide](https://img.shields.io/badge/Pyodide-Python_no_navegador-4B8BBE)
+![GitHub Pages](https://img.shields.io/badge/deploy-GitHub_Pages-222?logo=github)
 
-Não há versão online: a aplicação precisa de um processo Python local, porque as estruturas de
-dados ficam na memória do servidor. Para rodar, basta ter Python 3.10+ ([Como executar](#como-executar)).
+### ▶ [Abrir o MovieLens Explorer online](https://matheusquinteros.github.io/Projeto-Final-CPD/)
+
+Não precisa instalar nada. Na primeira visita, o navegador baixa o Python (Pyodide) e a amostra de
+dados (~17 MB) e monta as estruturas, o que leva alguns segundos. A versão online usa só a
+amostra; a base completa exige [rodar localmente](#como-executar).
 
 ## Demonstração
 
@@ -40,6 +45,12 @@ dados ficam na memória do servidor. Para rodar, basta ter Python 3.10+ ([Como e
     (minúsculas, só ASCII). A busca por prefixo desce até o nó do prefixo e coleta a subárvore.
   - [`funcoes.py`](Trabalho_final/funcoes.py): Shell Sort com a sequência de gaps de Ciura
     (estendida), que aceita uma função `key` como o `sorted` do Python, inclusive chaves compostas.
+- **O mesmo Python no servidor e no navegador.** No GitHub Pages não há servidor: um Web Worker
+  ([`pyodide-worker.js`](Trabalho_final/pyodide-worker.js)) carrega o
+  [Pyodide](https://pyodide.org/) (CPython compilado para WebAssembly), copia para dentro dele os
+  mesmos arquivos `.py` e os CSVs da amostra e chama `MovieSearchService`. Rodar num worker
+  impede que a carga trave a página. A interface detecta sozinha se está falando com o `gui.py`
+  (API HTTP) ou se deve usar o worker; os dois caminhos usam `MovieSearchService.consultar()`.
 - **Separação entre consulta e apresentação.** [`search_service.py`](Trabalho_final/search_service.py)
   concentra as regras de consulta e devolve objetos `ResultadoFilme` (dataclass imutável), sem
   saber nada de HTTP ou HTML. [`gui.py`](Trabalho_final/gui.py) só traduz requisições JSON em
@@ -49,14 +60,17 @@ dados ficam na memória do servidor. Para rodar, basta ter Python 3.10+ ([Como e
   HTML, CSS e JavaScript sem frameworks.
 - **Carga em segundo plano com progresso.** Os dados são carregados numa thread; a função de
   carga recebe um callback de progresso, e a interface consulta `/api/status` para mostrar a barra.
-  O estado compartilhado é protegido por `threading.Lock`.
+  O estado compartilhado é protegido por `threading.Lock`. No navegador, o worker envia o progresso
+  por mensagens.
 - **Validação de entrada.** Quantidades fora de 1–100, anos invertidos ou campos vazios viram
   respostas HTTP 400 com mensagem legível, exibida na interface.
 
 ## Como executar
 
-Requer Python 3.10 ou mais recente (o código usa a sintaxe `int | None`). Não há nada para
-instalar nem compilar.
+O jeito mais fácil é a [versão online](https://matheusquinteros.github.io/Projeto-Final-CPD/).
+
+Para rodar localmente (necessário para a base completa), é preciso Python 3.10 ou mais recente
+(o código usa a sintaxe `int | None`). Não há nada para instalar nem compilar.
 
 ```bash
 git clone https://github.com/MatheusQuinteros/Projeto-Final-CPD.git
@@ -110,6 +124,7 @@ O seletor **Conjunto de dados**, na barra lateral, alterna entre a amostra e a b
 ## Estrutura
 
 ```
+index.html             # redireciona para Trabalho_final/ (entrada do GitHub Pages)
 Trabalho_final/
   hash_table.py        # tabela hash com encadeamento separado
   trie.py              # trie R-ária para busca por prefixo
@@ -117,7 +132,8 @@ Trabalho_final/
   classes.py           # entidades Movie, Usuario e Tag
   search_service.py    # consultas da interface web, independentes da apresentação
   gui.py               # servidor HTTP local e API JSON (/api/load, /api/status, /api/search)
-  index.html           # interface (HTML, CSS e JS num único arquivo)
+  index.html           # interface (HTML, CSS e JS); escolhe entre servidor local e Pyodide
+  pyodide-worker.js    # roda o Python no navegador quando não há servidor (GitHub Pages)
   main.py              # interface de console original (python3 main.py --gui abre a web)
   dados-trabalho-pequeno/
     movies.csv         # ~27 mil filmes
@@ -137,7 +153,8 @@ O que é de quem:
   de console, escritos por mim. A carga dos dados usava pandas.
 - **Feito com auxílio de IA (LLM)** depois da entrega (commit `44fdc2a`): a interface web
   (`gui.py`, `index.html`), a camada `search_service.py`, a troca do pandas pelo módulo `csv` e
-  pequenos acréscimos na hash table (`__len__` e `valores()`). As estruturas de dados e o algoritmo
+  pequenos acréscimos na hash table (`__len__` e `valores()`). A versão para o navegador
+  (Pyodide + Web Worker) também foi feita com IA. As estruturas de dados e o algoritmo
   de ordenação não foram alterados.
 - **Dados**: [MovieLens](https://grouplens.org/datasets/movielens/), do GroupLens Research
   (Universidade de Minnesota), na versão pré-processada usada na disciplina. O uso segue os termos

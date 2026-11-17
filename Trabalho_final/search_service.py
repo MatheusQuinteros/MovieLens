@@ -143,6 +143,27 @@ class MovieSearchService:
         shell_sort(filmes, key=lambda filme: filme.get_average_rating())
         return [self._resultado(filme) for filme in filmes[:quantidade]]
 
+    def consultar(self, tipo, campos):
+        """Ponto de entrada único usado pelo servidor local e pela versão no navegador."""
+        consultas = {
+            "prefixo": lambda: self.buscar_prefixo(campos.get("prefixo", "")),
+            "usuario": lambda: self.buscar_usuario(campos.get("usuario", "")),
+            "genero": lambda: self.buscar_top_genero(
+                campos.get("quantidade", ""), campos.get("genero", "")
+            ),
+            "tags": lambda: self.buscar_tags(
+                campos.get("tag_1", ""), campos.get("tag_2", "")
+            ),
+            "periodo": lambda: self.buscar_melhores_periodo(
+                campos.get("quantidade", ""),
+                campos.get("ano_inicial", ""),
+                campos.get("ano_final", ""),
+            ),
+        }
+        if tipo not in consultas:
+            raise ValueError("Tipo de consulta inválido.")
+        return consultas[tipo]()
+
     @staticmethod
     def _validar_quantidade(quantidade):
         try:

@@ -54,9 +54,39 @@ function renderForm(){const v=views[current];$('#title').textContent=v.title;$('
 document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));b.classList.add('active');current=b.dataset.view;renderForm()});
 function empty(text,title='Nenhum resultado ainda'){$('#table-wrap').innerHTML=`<div class="empty"><b>${title}</b>${text}</div>`;$('#count').textContent=text}
 function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),5000)}
-async function load(){clearInterval(poller);$('#overlay').classList.remove('hidden');$('#badge').className='badge loading';$('#badge').textContent='● CARREGANDO';document.querySelectorAll('.nav button').forEach(b=>b.disabled=true);try{await fetch('/api/load',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({modo:$('#mode').value})});poller=setInterval(status,400);status()}catch(e){toast('Não foi possível iniciar o servidor de dados.')}}
-async function status(){try{const r=await fetch('/api/status'),s=await r.json();$('#loading-text').textContent=s.mensagem||'Carregando...';$('#bar').style.width=(s.progresso||0)+'%';if(s.erro){clearInterval(poller);$('#overlay').classList.add('hidden');$('#badge').className='badge error';$('#badge').textContent='● ERRO';toast(s.erro)}if(s.pronto){clearInterval(poller);$('#overlay').classList.add('hidden');$('#badge').className='badge ready';$('#badge').textContent=`● PRONTO  ${s.duracao.toFixed(1)}s`;for(const k of ['filmes','usuarios','avaliacoes','tags'])$('#s-'+k).textContent=fmt(s.stats[k]);document.querySelectorAll('.nav button').forEach(b=>b.disabled=false);renderForm()}}catch(e){clearInterval(poller);toast('A conexão com a aplicação foi interrompida.')}}
-async function search(ev){ev.preventDefault();const button=$('#search-form button');button.disabled=true;button.textContent='Buscando...';const campos={};new FormData(ev.target).forEach((v,k)=>campos[k]=v);const start=performance.now();try{const r=await fetch('/api/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tipo:current,campos})});const data=await r.json();if(!r.ok)throw new Error(data.erro||'Falha na consulta');renderRows(data.resultados,performance.now()-start)}catch(e){toast(e.message)}finally{button.disabled=false;button.textContent='Buscar filmes'}}
+// Dois backends com a mesma interface: o servidor local de gui.py (API HTTP) ou,
+// num site estático como o GitHub Pages, o mesmo Python rodando no navegador.
+const servidorLocal={
+ async carregar(modo,progresso){
+  await fetch('api/load',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({modo})});
+  return new Promise((ok,falha)=>{clearInterval(poller);poller=setInterval(async()=>{try{const s=await(await fetch('api/status')).json();progresso(s.mensagem||'Carregando...',s.progresso||0);if(s.erro){clearInterval(poller);falha(new Error(s.erro))}if(s.pronto){clearInterval(poller);ok(s)}}catch(e){clearInterval(poller);falha(new Error('A conexão com a aplicação foi interrompida.'))}},400)})},
+ async buscar(tipo,campos){const r=await fetch('api/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tipo,campos})});const data=await r.json();if(!r.ok)throw new Error(data.erro||'Falha na consulta');return data.resultados}
+};
+const navegador={
+ worker:null,pendentes:new Map(),proximo:0,
+ carregar(modo,progresso){
+  if(this.worker)return Promise.resolve(this.carregado);
+  this.worker=new Worker('pyodide-worker.js');
+  return new Promise((ok,falha)=>{this.worker.onmessage=({data})=>{
+   if(data.tipo==='progresso')progresso(data.mensagem,data.percentual);
+   else if(data.tipo==='pronto'){this.carregado=data;ok(data)}
+   else if(data.id!==undefined){const p=this.pendentes.get(data.id);this.pendentes.delete(data.id);data.erro?p.falha(new Error(data.erro)):p.ok(data.resultados)}
+   else if(data.tipo==='erro'){this.worker=null;falha(new Error(data.erro))}};
+   this.worker.postMessage({tipo:'carregar'})})},
+ buscar(consulta,campos){const id=this.proximo++;return new Promise((ok,falha)=>{this.pendentes.set(id,{ok,falha});this.worker.postMessage({tipo:'buscar',id,consulta,campos})})}
+};
+let backend=null;
+async function escolherBackend(){
+ try{const r=await fetch('api/status');if(r.ok&&(r.headers.get('Content-Type')||'').includes('json'))return servidorLocal}catch(e){}
+ const completo=$('#mode option[value="completo"]');completo.disabled=true;completo.textContent='Base completa (só local)';
+ return navegador;
+}
+async function load(){$('#overlay').classList.remove('hidden');$('#badge').className='badge loading';$('#badge').textContent='● CARREGANDO';document.querySelectorAll('.nav button').forEach(b=>b.disabled=true);
+ try{backend=backend||await escolherBackend();const s=await backend.carregar($('#mode').value,(mensagem,pct)=>{$('#loading-text').textContent=mensagem;$('#bar').style.width=pct+'%'});
+  $('#badge').className='badge ready';$('#badge').textContent=`● PRONTO  ${s.duracao.toFixed(1)}s`;for(const k of ['filmes','usuarios','avaliacoes','tags'])$('#s-'+k).textContent=fmt(s.stats[k]);document.querySelectorAll('.nav button').forEach(b=>b.disabled=false);renderForm()}
+ catch(e){$('#badge').className='badge error';$('#badge').textContent='● ERRO';toast(e.message)}
+ finally{$('#overlay').classList.add('hidden')}}
+async function search(ev){ev.preventDefault();const button=$('#search-form button');button.disabled=true;button.textContent='Buscando...';const campos={};new FormData(ev.target).forEach((v,k)=>campos[k]=v);const start=performance.now();try{renderRows(await backend.buscar(current,campos),performance.now()-start)}catch(e){toast(e.message)}finally{button.disabled=false;button.textContent='Buscar filmes'}}
 function renderRows(rows,ms){if(!rows.length){empty('Tente outros termos ou amplie os filtros.','Nenhum filme encontrado');return}$('#count').textContent=`${rows.length} filme${rows.length===1?'':'s'} • ${ms.toFixed(1)} ms`;const wrap=$('#table-wrap');wrap.innerHTML='<table><thead><tr><th class="num">ID</th><th>TÍTULO</th><th>GÊNEROS</th><th class="num">ANO</th><th class="num">NOTA GLOBAL</th><th class="num">AVALIAÇÕES</th><th class="num">MINHA NOTA</th></tr></thead><tbody></tbody></table>';const body=wrap.querySelector('tbody');for(const m of rows){const tr=document.createElement('tr');const vals=[m.movie_id,m.titulo,m.generos,m.ano??'—','★ '+m.nota_global.toFixed(2),fmt(m.avaliacoes),m.nota_usuario==null?'—':m.nota_usuario.toFixed(1)];vals.forEach((v,i)=>{const td=document.createElement('td');td.textContent=v;if(i===1)td.className='title-cell';if(i===2)td.className='genres';if([0,3,4,5,6].includes(i))td.classList.add('num');if(i===4)td.classList.add('rating');tr.appendChild(td)});body.appendChild(tr)}}
 $('#reload').onclick=load;renderForm();load();
 </script>

@@ -126,25 +126,8 @@ class Handler(BaseHTTPRequestHandler):
         if not service or not ESTADO.pronto:
             self._json({"erro": "A base ainda está sendo carregada."}, 409)
             return
-        tipo, campos = dados.get("tipo"), dados.get("campos", {})
-        consultas = {
-            "prefixo": lambda: service.buscar_prefixo(campos.get("prefixo", "")),
-            "usuario": lambda: service.buscar_usuario(campos.get("usuario", "")),
-            "genero": lambda: service.buscar_top_genero(
-                campos.get("quantidade", ""), campos.get("genero", "")
-            ),
-            "tags": lambda: service.buscar_tags(
-                campos.get("tag_1", ""), campos.get("tag_2", "")
-            ),
-            "periodo": lambda: service.buscar_melhores_periodo(
-                campos.get("quantidade", ""),
-                campos.get("ano_inicial", ""),
-                campos.get("ano_final", ""),
-            ),
-        }
-        if tipo not in consultas:
-            raise ValueError("Tipo de consulta inválido.")
-        self._json({"resultados": [asdict(item) for item in consultas[tipo]()]})
+        resultados = service.consultar(dados.get("tipo"), dados.get("campos", {}))
+        self._json({"resultados": [asdict(item) for item in resultados]})
 
 
 def executar(porta=8765, abrir_navegador=True):
